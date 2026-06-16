@@ -82,23 +82,24 @@ Run the project's checks before committing (see the repo's CLAUDE.md / package s
 SHA=$(git rev-parse --short HEAD)
 ```
 
-## 6. Reply to each thread, then resolve
+## 6. Reply to each thread, then conditionally resolve
 
-Reply on the comment's thread (note the `/replies` sub-resource keyed by the comment `databaseId`), citing the commit. One reply per thread:
+Reply on every actionable thread (note the `/replies` sub-resource keyed by the comment `databaseId`), citing the commit. **Every reply body must end with the trailer ` | by :robot_face: agent`** so reviewers can tell at a glance the reply came from an agent, not a human. One reply per thread:
 
 ```bash
 gh api repos/$OWNER/$REPO/pulls/$PR/comments/<COMMENT_DATABASE_ID>/replies \
-  -f body="Agreed — <what changed>. Fixed in $SHA." --jq '.html_url'
+  -f body="Agreed — <what changed>. Fixed in $SHA. | by :robot_face: agent" --jq '.html_url'
 ```
 
-Then resolve the thread by its node id:
+Then resolve the thread **only if its first comment was authored by `copilot-pull-request-reviewer`** (the author you captured in step 2). For human reviewers, reply and leave the thread open — they resolve it themselves once they're satisfied with the response. Auto-resolving a human's thread reads as dismissive.
 
 ```bash
+# Run ONLY when the thread's first-comment author == "copilot-pull-request-reviewer"
 gh api graphql -f query='mutation($id: ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ id isResolved } } }' \
   -f id="<PRRT_THREAD_ID>" --jq '.data.resolveReviewThread.thread | "\(.id) resolved=\(.isResolved)"'
 ```
 
-Resolve a thread only after its concern is genuinely handled (fixed or explained). For a divergent fix or a disagreement, the reply must carry the reasoning before you resolve.
+For a divergent fix or a disagreement on a Copilot thread, the reply must carry the reasoning before you resolve.
 
 ## Order & idempotency
 
@@ -106,4 +107,4 @@ Reply _before_ resolving (a resolved thread is easy to overlook). Re-running the
 
 ## Done when
 
-Every actionable thread has a fix-or-rationale reply and is resolved; fixes are pushed and green; CI/bot empty reviews are acknowledged as non-actionable, not resolved-for-show.
+Every actionable thread has a fix-or-rationale reply ending with the ` | by :robot_face: agent` trailer; Copilot threads are resolved; human-reviewer threads remain open for the reviewer; fixes are pushed and green; CI/bot empty reviews are acknowledged as non-actionable, not resolved-for-show.
